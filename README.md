@@ -10,6 +10,8 @@ Enable the edge process
 
 ```sh
 $ sudo ./edge -d n2n0 -c mynetwork -k encryptme -u 99 -g 99 -m 3C:A0:12:34:56:78 -a 1.2.3.4 -l a.b.c.d:xyw
+# or use docker
+docker  run --name n2n_client --cap-add=NET_ADMIN --device=/dev/net/tun  aimacity/n2n   edge -c    my-network -k pasword  -f -r -a 10.9.9.9 -l 1.2.3.4:12151
 ```
 
 or
