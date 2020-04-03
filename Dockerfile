@@ -1,28 +1,25 @@
-FROM ubuntu:18.10 as builder
+FROM alpine as builder
+ENV http_proxy=http://192.168.2.184:3128
+ENV https_proxy=http://192.168.2.184:3128
 
-RUN apt-get update && \
-	apt-get install -y curl  g++ build-essential net-tools autoconf git && \
-	cd $HOME && \
-	git clone  https://github.com/aimacity/n2n.git && \
-     cd n2n && \
+RUN  apk add --update --no-cache curl   g++ automake make  autoconf git bash pkgconfig linux-headers  libressl libressl-dev  libpcap libpcap-dev 
+
+RUN  	git clone  https://github.com/aimacity/n2n.git && cd n2n && \
      ./autogen.sh && \
      ./configure && \
-     make && mv edge supernode /usr/local/bin && \
-     cd  $HOME && rm -fr n2n && \     
-	 apt autoremove &&  apt clean  && rm -fr /tmp
+     make && mv edge supernode /usr/local/bin
 
-FROM ubuntu:18.10
+FROM alpine
 ARG DEBIAN_FRONTEND=noninteractive
-
-# Install the actual VSCode to download configs and extensions
-RUN apt-get update && \
-	apt-get install -y  net-tools  && \
-	 apt autoremove &&  apt clean  && rm -fr /tmp/*
-
+#ENV http_proxy=http://192.168.2.184:3128
+#ENV https_proxy=http://192.168.2.184:3128
+RUN apk add --update --no-cache curl libressl libpcap && rm -rf /var/lib/apt/lists/* &&  rm -fr /var/cache/apk/*
+#ENV http_proxy=
+#ENV https_proxy=
 COPY --from=builder  /usr/local/bin/supernode /usr/local/bin/edge  /usr/local/bin/
 
 EXPOSE 12151
 
-CMD edge -l 12151
+CMD supernode -l 12151
 
 
