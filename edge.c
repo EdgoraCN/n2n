@@ -19,6 +19,8 @@
 #include "n2n.h"
 #ifdef WIN32
 #include <sys/stat.h>
+#else
+#include <pwd.h>
 #endif
 
 #define N2N_NETMASK_STR_SIZE    16 /* dotted decimal 12 numbers + 3 dots */
@@ -131,13 +133,19 @@ static void help() {
 #ifndef WIN32
 	 "[-f]"
 #endif /* #ifndef WIN32 */
+#ifdef __linux__
+	 "[-T <tos>]"
+#endif
 	 "[-m <MAC address>] "
 	 "-l <supernode host:port>\n"
 	 "    "
 	 "[-p <local port>] [-M <mtu>] "
-	 "[-r] [-E] [-v] [-i <reg_interval>] [-t <mgmt port>] [-b] [-A] [-h]\n\n");
+#ifndef __APPLE__
+	 "[-D] "
+#endif
+	 "[-r] [-E] [-v] [-i <reg_interval>] [-L <reg_ttl>] [-t <mgmt port>] [-A] [-h]\n\n");
 
-#ifdef __linux__
+#if defined(N2N_CAN_NAME_IFACE)
   printf("-d <tun device>          | tun device name\n");
 #endif
 
@@ -147,8 +155,7 @@ static void help() {
   printf("-s <netmask>             | Edge interface netmask in dotted decimal notation (255.255.255.0).\n");
   printf("-l <supernode host:port> | Supernode IP:port\n");
   printf("-i <reg_interval>        | Registration interval, for NAT hole punching (default 20 seconds)\n");
-  printf("-b                       | Periodically resolve supernode IP\n");
-  printf("                         | (when supernodes are running on dynamic IPs)\n");
+  printf("-L <reg_ttl>             | TTL for registration packet when UDP NAT hole punching through supernode (default 0 for not set )\n");
   printf("-p <local port>          | Fixed local UDP port.\n");
 #ifndef WIN32
   printf("-u <UID>                 | User ID (numeric) to use when privileges are dropped.\n");
@@ -160,16 +167,29 @@ static void help() {
   printf("-m <MAC address>         | Fix MAC address for the TAP interface (otherwise it may be random)\n"
          "                         | eg. -m 01:02:03:04:05:06\n");
   printf("-M <mtu>                 | Specify n2n MTU of edge interface (default %d).\n", DEFAULT_MTU);
+#ifndef __APPLE__
+  printf("-D                       | Enable PMTU discovery. PMTU discovery can reduce fragmentation but\n"
+         "                         | causes connections stall when not properly supported.\n");
+#endif
   printf("-r                       | Enable packet forwarding through n2n community.\n");
 #ifdef N2N_HAVE_AES
   printf("-A                       | Use AES CBC for encryption (default=use twofish).\n");
 #endif
   printf("-E                       | Accept multicast MAC addresses (default=drop).\n");
+  printf("-S                       | Do not connect P2P. Always use the supernode.\n");
+#ifdef __linux__
+  printf("-T <tos>                 | TOS for packets (e.g. 0x48 for SSH like priority)\n");
+#endif
   printf("-v                       | Make more verbose. Repeat as required.\n");
   printf("-t <port>                | Management UDP Port (for multiple edges on a machine).\n");
 
   printf("\nEnvironment variables:\n");
   printf("  N2N_KEY                | Encryption key (ASCII). Not with -k.\n");
+
+#ifdef WIN32
+  printf("\nAvailable TAP adapters:\n");
+  win_print_available_adapters();
+#endif
 
   exit(0);
 }
@@ -238,6 +258,14 @@ static int setOption(int optkey, char *optargument, n2n_priv_config_t *ec, n2n_e
       break;
     }
 
+#ifndef __APPLE__
+  case 'D' : /* enable PMTU discovery */
+    {
+      conf->disable_pmtu_discovery = 0;
+      break;
+    }
+#endif
+
   case 'k': /* encrypt key */
     {
       if(conf->encrypt_key) free(conf->encrypt_key);
@@ -262,7 +290,7 @@ static int setOption(int optkey, char *optargument, n2n_priv_config_t *ec, n2n_e
       break;
     }
 #endif
-    
+
   case 'l': /* supernode-list */
     if(optargument) {
       if(edge_conf_add_supernode(conf, optargument) != 0) {
@@ -273,7 +301,11 @@ static int setOption(int optkey, char *optargument, n2n_priv_config_t *ec, n2n_e
     }
 
   case 'i': /* supernode registration interval */
-    conf->register_interval = atoi(optarg);
+    conf->register_interval = atoi(optargument);
+    break;
+
+  case 'L': /* supernode registration interval */
+    conf->register_ttl = atoi(optarg);
     break;
 
 #if defined(N2N_CAN_NAME_IFACE)
@@ -284,12 +316,6 @@ static int setOption(int optkey, char *optargument, n2n_priv_config_t *ec, n2n_e
       break;
     }
 #endif
-
-  case 'b':
-    {
-      conf->re_resolve_supernode_ip = 1;
-      break;
-    }
 
   case 'p':
     {
@@ -303,6 +329,18 @@ static int setOption(int optkey, char *optargument, n2n_priv_config_t *ec, n2n_e
       break;
     }
 
+#ifdef __linux__
+  case 'T':
+    {
+      if((optargument[0] == '0') && (optargument[1] == 'x'))
+        conf->tos = strtol(&optargument[2], NULL, 16);
+      else
+        conf->tos = atoi(optargument);
+
+      break;
+    }
+#endif
+
   case 's': /* Subnet Mask */
     {
       if(0 != ec->got_s) {
@@ -314,6 +352,12 @@ static int setOption(int optkey, char *optargument, n2n_priv_config_t *ec, n2n_e
       break;
     }
 
+  case 'S':
+    {
+      conf->allow_p2p = 0;
+      break;
+    }
+
   case 'h': /* help */
     {
       help();
@@ -321,9 +365,9 @@ static int setOption(int optkey, char *optargument, n2n_priv_config_t *ec, n2n_e
     }
 
   case 'v': /* verbose */
-    setTraceLevel(4); /* DEBUG */
+    setTraceLevel(getTraceLevel() + 1);
     break;
-    
+
   default:
     {
       traceEvent(TRACE_WARNING, "Unknown option -%c: Ignored", (char)optkey);
@@ -354,9 +398,12 @@ static int loadFromCLI(int argc, char *argv[], n2n_edge_conf_t *conf, n2n_priv_c
   u_char c;
 
   while((c = getopt_long(argc, argv,
-			 "K:k:a:bc:Eu:g:m:M:s:d:l:p:fvhrt:i:"
+			 "k:a:bc:Eu:g:m:M:s:d:l:p:fvhrt:i:SDL:"
 #ifdef N2N_HAVE_AES
 			 "A"
+#endif
+#ifdef __linux__
+			 "T:"
 #endif
 			 ,
 			 long_options, NULL)) != '?') {
@@ -552,8 +599,12 @@ static void daemonize() {
 static int keep_on_running;
 
 #ifdef __linux__
-
-static void term_handler(int sig) {
+#ifdef WIN32
+BOOL WINAPI term_handler(DWORD sig)
+#else
+static void term_handler(int sig)
+#endif
+{
   static int called = 0;
 
   if(called) {
@@ -565,6 +616,9 @@ static void term_handler(int sig) {
   }
 
   keep_on_running = 0;
+#ifdef WIN32
+  return(TRUE);
+#endif
 }
 #endif
 
@@ -577,18 +631,22 @@ int main(int argc, char* argv[]) {
   n2n_edge_t *eee;      /* single instance for this program */
   n2n_edge_conf_t conf; /* generic N2N edge config */
   n2n_priv_config_t ec; /* config used for standalone program execution */
-
-  if(argc == 1)
-    help();
+#ifndef WIN32
+  struct passwd *pw = NULL;
+#endif
 
   /* Defaults */
   edge_init_conf_defaults(&conf);
   memset(&ec, 0, sizeof(ec));
   ec.mtu = DEFAULT_MTU;
   ec.daemon = 1;    /* By default run in daemon mode. */
+
 #ifndef WIN32
-  ec.userid = 0; /* root is the only guaranteed ID */
-  ec.groupid = 0; /* root is the only guaranteed ID */
+  if(((pw = getpwnam("n2n")) != NULL) ||
+     ((pw = getpwnam("nobody")) != NULL)) {
+    ec.userid = pw->pw_uid;
+    ec.groupid = pw->pw_gid;
+  }
 #endif
 
 #ifdef WIN32
@@ -599,19 +657,30 @@ int main(int argc, char* argv[]) {
   snprintf(ec.ip_mode, sizeof(ec.ip_mode), "static");
   snprintf(ec.netmask, sizeof(ec.netmask), "255.255.255.0");
 
-  traceEvent(TRACE_NORMAL, "Starting n2n edge %s %s", PACKAGE_VERSION, PACKAGE_BUILDDATE);
-
-#ifndef WIN32
   if((argc >= 2) && (argv[1][0] != '-')) {
     rc = loadFromFile(argv[1], &conf, &ec);
     if(argc > 2)
       rc = loadFromCLI(argc, argv, &conf, &ec);
-  } else
-#endif
+  } else if(argc > 1)
     rc = loadFromCLI(argc, argv, &conf, &ec);
+  else
+#ifdef WIN32
+    /* Load from current directory */
+    rc = loadFromFile("edge.conf", &conf, &ec);
+#else
+    rc = -1;
+#endif
 
   if(rc < 0)
     help();
+
+  if(edge_verify_conf(&conf) != 0)
+    help();
+
+  traceEvent(TRACE_NORMAL, "Starting n2n edge %s %s", PACKAGE_VERSION, PACKAGE_BUILDDATE);
+
+  /* Random seed */
+  srand(time(NULL));
 
   if(0 == strcmp("dhcp", ec.ip_mode)) {
     traceEvent(TRACE_NORMAL, "Dynamic IP address assignment enabled.");
@@ -619,9 +688,6 @@ int main(int argc, char* argv[]) {
     conf.dyn_ip_mode = 1;
   } else
     traceEvent(TRACE_NORMAL, "ip_mode='%s'", ec.ip_mode);
-
-  if(edge_verify_conf(&conf) != 0)
-    help();
 
   if(!(
 #ifdef __linux__
@@ -640,6 +706,9 @@ int main(int argc, char* argv[]) {
   if(tuntap_open(&tuntap, ec.tuntap_dev_name, ec.ip_mode, ec.ip_addr, ec.netmask, ec.device_mac, ec.mtu) < 0)
     return(-1);
 
+  if(conf.encrypt_key && !strcmp((char*)conf.community_name, conf.encrypt_key))
+    traceEvent(TRACE_WARNING, "Community and encryption key must differ, otherwise security will be compromised");
+
   if((eee = edge_init(&tuntap, &conf, &rc)) == NULL) {
     traceEvent(TRACE_ERROR, "Failed in edge_init");
     exit(1);
@@ -654,18 +723,27 @@ int main(int argc, char* argv[]) {
 
 #ifndef WIN32
   if((ec.userid != 0) || (ec.groupid != 0)) {
-    traceEvent(TRACE_NORMAL, "Interface up. Dropping privileges to uid=%d, gid=%d",
+    traceEvent(TRACE_NORMAL, "Dropping privileges to uid=%d, gid=%d",
 	       (signed int)ec.userid, (signed int)ec.groupid);
 
     /* Finished with the need for root privileges. Drop to unprivileged user. */
-    setreuid(ec.userid, ec.userid);
-    setregid(ec.groupid, ec.groupid);
+    if((setgid(ec.groupid) != 0)
+       || (setuid(ec.userid) != 0)) {
+      traceEvent(TRACE_ERROR, "Unable to drop privileges [%u/%s]", errno, strerror(errno));
+      exit(1);
+    }
   }
+
+  if((getuid() == 0) || (getgid() == 0))
+    traceEvent(TRACE_WARNING, "Running as root is discouraged, check out the -u/-g options");
 #endif
 
 #ifdef __linux__
   signal(SIGTERM, term_handler);
   signal(SIGINT,  term_handler);
+#endif
+#ifdef WIN32
+  SetConsoleCtrlHandler(term_handler, TRUE);
 #endif
 
   keep_on_running = 1;

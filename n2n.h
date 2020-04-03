@@ -38,10 +38,13 @@
 #ifdef WIN32
 #include "win32/n2n_win32.h"
 #include "win32/winconfig.h"
+#define N2N_CAN_NAME_IFACE 1
 #undef N2N_HAVE_DAEMON
 #undef N2N_HAVE_SETUID
 #else
+#ifndef CMAKE_BUILD
 #include "config.h"
+#endif
 #endif
 
 #define PACKAGE_BUILDDATE (__DATE__ " " __TIME__)
@@ -125,8 +128,12 @@ typedef struct ether_hdr ether_hdr_t;
 #include "n2n_wire.h"
 #include "n2n_transforms.h"
 
-/* N2N_IFNAMSIZ is needed on win32 even if dev_name is not used after declaration */
+#ifdef WIN32
+#define N2N_IFNAMSIZ            64
+#else
 #define N2N_IFNAMSIZ            16 /* 15 chars * NULL */
+#endif
+
 #ifndef WIN32
 typedef struct tuntap_dev {
   int           fd;
@@ -150,6 +157,8 @@ typedef struct tuntap_dev {
 #define MSG_TYPE_REGISTER_SUPER_ACK     6
 #define MSG_TYPE_REGISTER_SUPER_NAK     7
 #define MSG_TYPE_FEDERATION             8
+#define MSG_TYPE_PEER_INFO              9
+#define MSG_TYPE_QUERY_PEER            10
 
 /* Set N2N_COMPRESSION_ENABLED to 0 to disable lzo1x compression of ethernet
  * frames. Doing this will break compatibility with the standard n2n packet
@@ -157,7 +166,11 @@ typedef struct tuntap_dev {
  * same value if they are to understand each other. */
 #define N2N_COMPRESSION_ENABLED 1
 
-#define DEFAULT_MTU   1400
+#define DEFAULT_MTU   1290
+
+/** Uncomment this to enable the MTU check, then try to ssh to generate a fragmented packet. */
+/** NOTE: see doc/MTU.md for an explanation on the 1400 value */
+//#define MTU_ASSERT_VALUE 1400
 
 /** Common type used to hold stringified IP addresses. */
 typedef char ipstr_t[32];
@@ -167,13 +180,20 @@ typedef char ipstr_t[32];
 typedef char macstr_t[N2N_MACSTR_SIZE];
 
 struct peer_info {
-  struct peer_info *  next;
-  n2n_community_t     community_name;
   n2n_mac_t           mac_addr;
   n2n_sock_t          sock;
   int                 timeout;
   time_t              last_seen;
+  time_t              last_p2p;
+  time_t              last_sent_query;
+
+  UT_hash_handle hh; /* makes this structure hashable */
 };
+
+#define HASH_ADD_PEER(head,add)                                                \
+    HASH_ADD(hh,head,mac_addr,sizeof(n2n_mac_t),add)
+#define HASH_FIND_PEER(head,mac,out)                                           \
+    HASH_FIND(hh,head,mac,sizeof(n2n_mac_t),out)
 
 #define N2N_EDGE_SN_HOST_SIZE   48
 #define N2N_EDGE_NUM_SUPERNODES 2
@@ -188,13 +208,16 @@ typedef struct n2n_edge_conf {
   n2n_sn_name_t       sn_ip_array[N2N_EDGE_NUM_SUPERNODES];
   n2n_community_t     community_name;         /**< The community. 16 full octets. */
   n2n_transform_t     transop_id;             /**< The transop to use. */
-  uint8_t             re_resolve_supernode_ip;
   uint8_t             dyn_ip_mode;            /**< Interface IP address is dynamically allocated, eg. DHCP. */
   uint8_t             allow_routing;          /**< Accept packet no to interface address. */
   uint8_t             drop_multicast;         /**< Multicast ethernet addresses. */
+  uint8_t             disable_pmtu_discovery; /**< Disable the Path MTU discovery. */
+  uint8_t             allow_p2p;              /**< Allow P2P connection */
   uint8_t             sn_num;                 /**< Number of supernode addresses defined. */
+  uint8_t             tos;                    /** TOS for sent packets */
   char                *encrypt_key;
   int                 register_interval;      /**< Interval for supernode registration, also used for UDP NAT hole punching. */
+  int                 register_ttl;           /**< TTL for registration packet when UDP NAT hole punching through supernode. */
   int                 local_port;
   int                 mgmt_port;
 } n2n_edge_conf_t;
@@ -241,11 +264,12 @@ int n2n_transop_aes_cbc_init(const n2n_edge_conf_t *conf, n2n_trans_op_t *ttt);
 /* Log */
 void setTraceLevel(int level);
 void setUseSyslog(int use_syslog);
+void setTraceFile(FILE *f);
 int getTraceLevel();
 void traceEvent(int eventTraceLevel, char* file, int line, char * format, ...);
 
 /* Tuntap API */
-int tuntap_open(tuntap_dev *device, char *dev, const char *address_mode, char *device_ip, 
+int tuntap_open(tuntap_dev *device, char *dev, const char *address_mode, char *device_ip,
 			char *device_mask, const char * device_mac, int mtu);
 int tuntap_read(struct tuntap_dev *tuntap, unsigned char *buf, int len);
 int tuntap_write(struct tuntap_dev *tuntap, unsigned char *buf, int len);
@@ -267,16 +291,11 @@ void print_edge_stats(const n2n_edge_t *eee);
 char* sock_to_cstr( n2n_sock_str_t out,
                             const n2n_sock_t * sock );
 SOCKET open_socket(int local_port, int bind_any);
-int sock_equal( const n2n_sock_t * a, 
+int sock_equal( const n2n_sock_t * a,
                        const n2n_sock_t * b );
 
 /* Operations on peer_info lists. */
-struct peer_info * find_peer_by_mac( struct peer_info * list,
-                                     const n2n_mac_t mac );
-void peer_list_add( struct peer_info * * list,
-                      struct peer_info * newp );
-size_t peer_list_size( const struct peer_info * list );
-size_t purge_peer_list( struct peer_info ** peer_list, 
+size_t purge_peer_list( struct peer_info ** peer_list,
                         time_t purge_before );
 size_t clear_peer_list( struct peer_info ** peer_list );
 size_t purge_expired_registrations( struct peer_info ** peer_list, time_t* p_last_purge );
@@ -297,5 +316,4 @@ int quick_edge_init(char *device_name, char *community_name,
 		    char *supernode_ip_address_port,
 		    int *keep_on_running);
 
-void send_packet2net(n2n_edge_t * eee, uint8_t *tap_pkt, size_t len);
 #endif /* _N2N_H_ */
