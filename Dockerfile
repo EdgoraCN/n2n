@@ -1,6 +1,6 @@
 FROM alpine as builder
-ENV http_proxy=http://192.168.2.184:3128
-ENV https_proxy=http://192.168.2.184:3128
+#ENV http_proxy=http://192.168.2.184:3128
+#ENV https_proxy=http://192.168.2.184:3128
 
 RUN  apk add --update --no-cache curl   g++ automake make  autoconf git bash pkgconfig linux-headers  libressl libressl-dev  libpcap libpcap-dev 
 
