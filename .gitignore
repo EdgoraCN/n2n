@@ -20,3 +20,12 @@ packages/etc/systemd/system/edge-ntopng@.service
 packages/etc/systemd/system/edge.service
 packages/etc/systemd/system/edge@.service
 packages/etc/systemd/system/supernode.service
+.DS_Store
+packages/etc/.DS_Store
+edge.dSYM/Contents/Info.plist
+supernode.dSYM/Contents/Info.plist
+example_edge_embed.dSYM/Contents/Info.plist
+tools/n2n-benchmark.dSYM/Contents/Info.plist
+tools/n2n-benchmark.dSYM/Contents/Resources/DWARF/n2n-benchmark
+tools/n2n-decode.dSYM/Contents/Info.plist
+tools/n2n-decode.dSYM/Contents/Resources/DWARF/n2n-decode
