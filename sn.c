@@ -19,6 +19,7 @@
 /* Supernode for n2n-2.x */
 
 #include "n2n.h"
+#include "hiredis.h"
 
 #ifdef WIN32
 #include <signal.h>
