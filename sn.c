@@ -18,8 +18,7 @@
 
 /* Supernode for n2n-2.x */
 
-#include "n2n.h"
-#include "hiredis.h"
+#include "sn_redis.h"
 
 #ifdef WIN32
 #include <signal.h>
@@ -52,7 +51,10 @@ static int init_sn(n2n_sn_t * sss) {
   initWin32();
 #endif
   memset(sss, 0, sizeof(n2n_sn_t));
-
+  sss->redis.port = 6379;
+  strcpy(sss->redis.host, "127.0.0.1");
+  strcpy(sss->redis.password, "");
+  sss->redis.db = 0;
   sss->daemon = 1; /* By defult run as a daemon. */
   sss->lport = N2N_SN_LPORT_DEFAULT;
   sss->sock = -1;
@@ -402,10 +404,10 @@ static int load_allowed_sn_community(n2n_sn_t *sss, char *path) {
     len--;
     while(len > 0) {
       if((line[len] == '\n') || (line[len] == '\r')) {
-	line[len] = '\0';
-	len--;
-      } else
-	break;
+      line[len] = '\0';
+      len--;
+          } else
+      break;
     }
 
     s = (struct sn_community*)calloc(1,sizeof(struct sn_community));
@@ -563,28 +565,28 @@ static int process_udp(n2n_sn_t * sss,
 		 ((cmn.flags & N2N_FLAGS_FROM_SUPERNODE)?"from sn":"local"));
 
       if(0 == (cmn.flags & N2N_FLAGS_FROM_SUPERNODE)) {
-	memcpy(&cmn2, &cmn, sizeof(n2n_common_t));
+        memcpy(&cmn2, &cmn, sizeof(n2n_common_t));
 
-	/* We are going to add socket even if it was not there before */
-	cmn2.flags |= N2N_FLAGS_SOCKET | N2N_FLAGS_FROM_SUPERNODE;
+        /* We are going to add socket even if it was not there before */
+        cmn2.flags |= N2N_FLAGS_SOCKET | N2N_FLAGS_FROM_SUPERNODE;
 
-	reg.sock.family = AF_INET;
-	reg.sock.port = ntohs(sender_sock->sin_port);
-	memcpy(reg.sock.addr.v4, &(sender_sock->sin_addr.s_addr), IPV4_SIZE);
+        reg.sock.family = AF_INET;
+        reg.sock.port = ntohs(sender_sock->sin_port);
+        memcpy(reg.sock.addr.v4, &(sender_sock->sin_addr.s_addr), IPV4_SIZE);
 
-	rec_buf = encbuf;
+        rec_buf = encbuf;
 
-	/* Re-encode the header. */
-	encode_REGISTER(encbuf, &encx, &cmn2, &reg);
+        /* Re-encode the header. */
+        encode_REGISTER(encbuf, &encx, &cmn2, &reg);
 
-	/* Copy the original payload unchanged */
-	encode_buf(encbuf, &encx, (udp_buf + idx), (udp_size - idx));
+        /* Copy the original payload unchanged */
+        encode_buf(encbuf, &encx, (udp_buf + idx), (udp_size - idx));
       } else {
-	/* Already from a supernode. Nothing to modify, just pass to
-	 * destination. */
+        /* Already from a supernode. Nothing to modify, just pass to
+        * destination. */
 
-	rec_buf = udp_buf;
-	encx = udp_size;
+        rec_buf = udp_buf;
+        encx = udp_size;
       }
 
       try_forward(sss, &cmn, reg.dstMac, rec_buf, encx); /* unicast only */
@@ -610,25 +612,39 @@ static int process_udp(n2n_sn_t * sss,
     decode_REGISTER_SUPER(&reg, &cmn, udp_buf, &rem, &idx);
 
     HASH_FIND_COMMUNITY(sss->communities, (char*)cmn.community, comm);
-
     /*
       Before we move any further, we need to check if the requested
       community is allowed by the supernode. In case it is not we do
       not report any message back to the edge to hide the supernode
       existance (better from the security standpoint)
+      use redis check if the community is allowd 
     */
-    if(!comm && !sss->lock_communities) {
+    int redis_allow = 0; 
+    redis_comm_conf *comm_conf = calloc(1, sizeof(struct redis_community_conf));
+    redis_edge_conf *edge_conf = calloc(1, sizeof(struct redis_edge_conf));
+    if(!comm && sss->use_redis){
+      // check redis community is exist
+      get_redis_data((char*)cmn.community,sss,&reg,comm_conf,edge_conf);
+      traceEvent(TRACE_INFO, "redis community: %s -> %s [subnet=%s]", comm_conf->owner , comm_conf->community,comm_conf->subnet);
+      traceEvent(TRACE_INFO, "redis edge: %s -> %s -> %s [ip=%s] [online=%d] ", edge_conf->community,edge_conf->owner,edge_conf->secret,edge_conf->ip,edge_conf->online);
+      if(comm_conf->owner!=NULL&&edge_conf->owner!=NULL){
+        redis_allow = 1;
+      } else {
+        traceEvent(TRACE_INFO, "redis edge not found: %s -> %s", (char*)cmn.community,edge_conf->owner,(char*)&reg.auth);
+      }
+    }
+    if(!comm && (!sss->lock_communities||redis_allow)) {
       comm = calloc(1, sizeof(struct sn_community));
 
       if(comm) {
-	strncpy(comm->community, (char*)cmn.community, N2N_COMMUNITY_SIZE-1);
-	comm->community[N2N_COMMUNITY_SIZE-1] = '\0';
-	HASH_ADD_STR(sss->communities, community, comm);
+        strncpy(comm->community, (char*)cmn.community, N2N_COMMUNITY_SIZE-1);
+        comm->community[N2N_COMMUNITY_SIZE-1] = '\0';
+        HASH_ADD_STR(sss->communities, community, comm);
 
-	traceEvent(TRACE_INFO, "New community: %s", comm->community);
+        traceEvent(TRACE_INFO, "New community: %s", comm->community);
       }
     }
-
+    
     if(comm) {
       cmn2.ttl = N2N_DEFAULT_TTL;
       cmn2.pc = n2n_register_super_ack;
@@ -651,7 +667,8 @@ static int process_udp(n2n_sn_t * sss,
 		 sock_to_cstr(sockbuf, &(ack.sock)));
 
       update_edge(sss, reg.edgeMac, comm, &(ack.sock), now);
-
+      // change edge status
+      update_edge_conf(sss,edge_conf,1, (char*)reg.edgeMac);
       encode_REGISTER_SUPER_ACK(ackbuf, &encx, &cmn2, &ack);
 
       sendto(sss->sock, ackbuf, encx, 0,
@@ -660,9 +677,16 @@ static int process_udp(n2n_sn_t * sss,
       traceEvent(TRACE_DEBUG, "Tx REGISTER_SUPER_ACK for %s [%s]",
 		 macaddr_str(mac_buf, reg.edgeMac),
 		 sock_to_cstr(sockbuf, &(ack.sock)));
-    } else
-      traceEvent(TRACE_INFO, "Discarded registration: unallowed community '%s'",
-		 (char*)cmn.community);
+    } else {
+      traceEvent(TRACE_INFO, "Discarded registration: unallowed community '%s'", (char*)cmn.community);
+    }
+    // release conf
+    if(comm_conf!=NULL){
+      free(comm_conf);
+    }
+    if(edge_conf!=NULL){
+      free(edge_conf);
+    }
     break;
   } case MSG_TYPE_QUERY_PEER: {
     n2n_QUERY_PEER_t query;
@@ -737,6 +761,10 @@ static void help() {
 
   printf("-l <lport>\tSet UDP main listen port to <lport>\n");
   printf("-c <path>\tFile containing the allowed communities.\n");
+  printf("-r <redis-host>\tredis host.\n");
+  printf("-p <redis-password>\tRedis port.\n");
+  printf("-w <redis-password\tRedis password.\n");
+  printf("-n <redis-dbnum>\tRedis db num.\n");
 #if defined(N2N_HAVE_DAEMON)
   printf("-f        \tRun in foreground.\n");
 #endif /* #if defined(N2N_HAVE_DAEMON) */
@@ -759,6 +787,30 @@ static int setOption(int optkey, char *_optarg, n2n_sn_t *sss) {
   switch(optkey) {
   case 'l': /* local-port */
     sss->lport = atoi(_optarg);
+    break;
+
+  case 'r': /* redis-host */
+    strncpy( sss->redis.host, _optarg, N2N_REDIS_HOST_SIZE);
+    //sss->lock_communities = 1;
+    sss->use_redis = 1;
+    break;
+
+  case 'p': /* redis-port */
+    sss->redis.port = atoi(_optarg);
+    //sss->lock_communities = 1;
+    sss->use_redis = 1;
+    break;
+  
+  case 'w': /* redis-password */
+    strncpy( sss->redis.password, _optarg, N2N_REDIS_PASSWORD_SIZE);
+    //sss->lock_communities = 1;
+    sss->use_redis = 1;
+    break;
+  
+  case 'n': /* redis-db number */
+    sss->redis.db = atoi(_optarg);
+    sss->use_redis = 1;
+    //sss->lock_communities = 1;
     break;
 
   case 'c': /* community file */
@@ -788,6 +840,10 @@ static int setOption(int optkey, char *_optarg, n2n_sn_t *sss) {
 /* *********************************************** */
 
 static const struct option long_options[] = {
+  { "redis-host",      required_argument, NULL, 'r' },
+  { "redis-port",      required_argument, NULL, 'p' },
+  { "redis-password",      required_argument, NULL, 'w' },
+  { "redis-dbmum",      required_argument, NULL, 'n' },
   { "communities",     required_argument, NULL, 'c' },
   { "foreground",      no_argument,       NULL, 'f' },
   { "local-port",      required_argument, NULL, 'l' },
@@ -1081,29 +1137,29 @@ static int run_loop(n2n_sn_t * sss) {
 	  break;
 	}
 
-	/* We have a datagram to process */
-	if(bread > 0) {
-	  /* And the datagram has data (not just a header) */
-	  process_udp(sss, &sender_sock, pktbuf, bread, now);
-	}
+        /* We have a datagram to process */
+        if(bread > 0) {
+          /* And the datagram has data (not just a header) */
+          process_udp(sss, &sender_sock, pktbuf, bread, now);
+        }
       }
 
       if(FD_ISSET(sss->mgmt_sock, &socket_mask)) {
-	struct sockaddr_in  sender_sock;
-	size_t              i;
+        struct sockaddr_in  sender_sock;
+        size_t              i;
 
-	i = sizeof(sender_sock);
-	bread = recvfrom(sss->mgmt_sock, pktbuf, N2N_SN_PKTBUF_SIZE, 0/*flags*/,
-			 (struct sockaddr *)&sender_sock, (socklen_t*)&i);
+        i = sizeof(sender_sock);
+        bread = recvfrom(sss->mgmt_sock, pktbuf, N2N_SN_PKTBUF_SIZE, 0/*flags*/,
+            (struct sockaddr *)&sender_sock, (socklen_t*)&i);
 
-	if(bread <= 0) {
-	  traceEvent(TRACE_ERROR, "recvfrom() failed %d errno %d (%s)", bread, errno, strerror(errno));
-	  keep_running=0;
-	  break;
-	}
+        if(bread <= 0) {
+          traceEvent(TRACE_ERROR, "recvfrom() failed %d errno %d (%s)", bread, errno, strerror(errno));
+          keep_running=0;
+          break;
+        }
 
-	/* We have a datagram to process */
-	process_mgmt(sss, &sender_sock, pktbuf, bread, now);
+        /* We have a datagram to process */
+        process_mgmt(sss, &sender_sock, pktbuf, bread, now);
       }
     } else {
       traceEvent(TRACE_DEBUG, "timeout");
@@ -1111,11 +1167,10 @@ static int run_loop(n2n_sn_t * sss) {
 
     HASH_ITER(hh, sss->communities, comm, tmp) {
       purge_expired_registrations( &comm->edges, &last_purge_edges );
-
       if((comm->edges == NULL) && (!sss->lock_communities)) {
-	traceEvent(TRACE_INFO, "Purging idle community %s", comm->community);
-	HASH_DEL(sss->communities, comm);
-	free(comm);
+        traceEvent(TRACE_INFO, "Purging idle community %s", comm->community);
+        HASH_DEL(sss->communities, comm);
+        free(comm);
       }
     }
 

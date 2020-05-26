@@ -298,8 +298,9 @@ int encode_REGISTER_SUPER( uint8_t * base,
     retval += encode_common( base, idx, common );
     retval += encode_buf( base, idx, reg->cookie, N2N_COOKIE_SIZE );
     retval += encode_mac( base, idx, reg->edgeMac );
-    retval += encode_uint16( base, idx, 0 ); /* NULL auth scheme */
-    retval += encode_uint16( base, idx, 0 ); /* No auth data */
+    retval += encode_uint16( base, idx, reg->auth.scheme ); /* NULL auth scheme */
+    retval += encode_uint16( base, idx, reg->auth.toksize ); /* No auth data */
+    retval += encode_buf(base,idx,reg->auth.token,reg->auth.toksize);
 
     return retval;
 }

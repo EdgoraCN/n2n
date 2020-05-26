@@ -32,3 +32,4 @@ tools/n2n-benchmark.dSYM/Contents/Resources/DWARF/n2n-benchmark
 tools/n2n-decode.dSYM/Contents/Info.plist
 tools/n2n-decode.dSYM/Contents/Resources/DWARF/n2n-decode
 *dSYM*
+redis_test

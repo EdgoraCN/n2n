@@ -16,6 +16,7 @@ PLATOPTS_SPARC64=-mcpu=ultrasparc -pipe -fomit-frame-pointer -ffast-math -finlin
 
 N2N_OBJS_OPT=
 LIBS_EDGE_OPT=@N2N_LIBS@
+LIBS_SN_OPT=@SN_LIBS@
 CFLAGS=@CFLAGS@
 LDFLAGS=@LDFLAGS@
 
@@ -53,8 +54,15 @@ N2N_OBJS=n2n.o wire.o minilzo.o twofish.o \
          transform_null.o transform_tf.o transform_aes.o \
          tuntap_freebsd.o tuntap_netbsd.o tuntap_linux.o \
 	 tuntap_osx.o
+
+SN_LIB=libsn.a
+SN_OBJS=n2n.o wire.o minilzo.o twofish.o \
+	 edge_utils.o sn_utils.o \
+         transform_null.o transform_tf.o transform_aes.o \
+         tuntap_freebsd.o tuntap_netbsd.o tuntap_linux.o \
+	 tuntap_osx.o redis.o
 LIBS_EDGE+=$(LIBS_EDGE_OPT)
-LIBS_SN=
+LIBS_SN+=$(LIBS_SN_OPT)
 
 #For OpenSolaris (Solaris too?)
 ifeq ($(shell uname), SunOS)
@@ -63,6 +71,7 @@ LIBS_SN+=-lsocket -lnsl
 endif
 
 APPS=edge
+APPS+=redis_test
 APPS+=supernode
 APPS+=example_edge_embed_quick_edge_init
 APPS+=example_edge_embed
@@ -79,8 +88,11 @@ tools: $(N2N_LIB)
 edge: edge.c $(N2N_LIB) n2n_wire.h n2n.h Makefile
 	$(CC) $(CFLAGS) $< $(LDFLAGS) $(N2N_LIB) $(LIBS_EDGE) -o $@
 
-supernode: sn.c $(N2N_LIB) n2n.h Makefile
-	$(CC) $(CFLAGS) $< $(LDFLAGS) $(N2N_LIB) $(LIBS_SN) -o $@
+redis_test: redis_test.c  $(N2N_LIB) Makefile
+	$(CC) $(CFLAGS) $< $(LDFLAGS)  $(N2N_LIB) $(LIBS_SN) -o $@
+
+supernode: sn.c $(SN_LIB) n2n.h sn_redis.h Makefile
+	$(CC) $(CFLAGS) $< $(LDFLAGS) $(SN_LIB) $(LIBS_SN) -o $@
 
 example_edge_embed_quick_edge_init: example_edge_embed_quick_edge_init.c $(N2N_LIB) n2n.h
 	$(CC) $(CFLAGS) $< $(LDFLAGS) $(N2N_LIB) $(LIBS_EDGE) -o $@
@@ -99,10 +111,13 @@ example_edge_embed: example_edge_embed.c $(N2N_LIB) n2n.h
 
 $(N2N_LIB): $(N2N_OBJS)
 	ar rcs $(N2N_LIB) $(N2N_OBJS)
+
+$(SN_LIB): $(SN_OBJS)
+	ar rcs $(SN_LIB) $(SN_OBJS)
 #	$(RANLIB) $@
 
 clean:
-	rm -rf $(N2N_OBJS) $(N2N_LIB) $(APPS) $(DOCS) test n2n-decode *.dSYM *~
+	rm -rf $(N2N_OBJS) $(SN_OBJS) $(N2N_LIB) $(SN_LIB) $(APPS) $(DOCS) test n2n-decode *.dSYM *~
 	$(MAKE) -C tools clean
 
 install: edge supernode edge.8.gz supernode.1.gz n2n.7.gz

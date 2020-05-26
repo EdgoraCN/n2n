@@ -202,6 +202,8 @@ struct peer_info {
 #define N2N_EDGE_SUP_ATTEMPTS   3       /* Number of failed attmpts before moving on to next supernode. */
 #define N2N_PATHNAME_MAXLEN     256
 #define N2N_EDGE_MGMT_PORT      5644
+#define N2N_REDIS_HOST_SIZE             64
+#define N2N_REDIS_PASSWORD_SIZE         32
 
 
 typedef char n2n_sn_name_t[N2N_EDGE_SN_HOST_SIZE];
@@ -237,6 +239,14 @@ typedef struct sn_stats
     time_t last_reg_super; /* Time when last REGISTER_SUPER was received. */
 } sn_stats_t;
 
+typedef struct sn_redis
+{
+    char host[N2N_REDIS_HOST_SIZE];
+    int port; /*redis port.*/
+    int db; /**redis db number**/
+    char password[N2N_REDIS_PASSWORD_SIZE]; /*redis password.*/
+} sn_redis_t;
+
  typedef struct n2n_sn
 {
     time_t start_time; /* Used to measure uptime. */
@@ -246,8 +256,12 @@ typedef struct sn_stats
     int sock;             /* Main socket for UDP traffic with edges. */
     int mgmt_sock;        /* management socket. */
     int lock_communities; /* If true, only loaded communities can be used. */
+    int use_redis;
+    sn_redis_t redis;
     struct sn_community *communities;
 } n2n_sn_t;
+
+
 
  struct sn_community
 {

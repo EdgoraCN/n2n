@@ -23,6 +23,16 @@ else
   N2N_LIBS=-lcrypto
 fi
 
+AC_CHECK_LIB([hiredis], [redisCommand])
+
+SN_LIBS=
+if test "x$ac_cv_lib_hiredis_redisCommand" != xyes; then
+  AC_MSG_RESULT(Building SN without REDIS support)
+else
+  AC_DEFINE([HAVE_LIBHIREDIS], [], [Have REDIS support])
+  SN_LIBS=-lhiredis
+fi
+
 OLD_CFLAGS="${CFLAGS}"
 OLD_LDFLAGS="${LDFLAGS}"
 
@@ -87,6 +97,7 @@ AC_SUBST(GIT_REVISION)
 AC_SUBST(GIT_RELEASE)
 AC_SUBST(N2N_DEFINES)
 AC_SUBST(N2N_LIBS)
+AC_SUBST(SN_LIBS)
 AC_SUBST(ADDITIONAL_TOOLS)
 AC_CONFIG_HEADERS(config.h)
 AC_CONFIG_FILES(Makefile)
