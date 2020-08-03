@@ -627,13 +627,14 @@ static int process_udp(n2n_sn_t * sss,
       get_redis_data((char*)cmn.community,sss,&reg,comm_conf,edge_conf);
       traceEvent(TRACE_INFO, "redis community: %s -> %s [subnet=%s]", comm_conf->owner , comm_conf->community,comm_conf->subnet);
       traceEvent(TRACE_INFO, "redis edge: %s -> %s -> %s [ip=%s] [online=%d] ", edge_conf->community,edge_conf->owner,edge_conf->secret,edge_conf->ip,edge_conf->online);
-      if(comm_conf->owner!=NULL&&edge_conf->owner!=NULL){
+      if(comm_conf->owner!=NULL&&comm_conf->owner[0] != '\0'&&edge_conf->owner!=NULL&&edge_conf->owner[0] != '\0'){
         redis_allow = 1;
       } else {
         traceEvent(TRACE_INFO, "redis edge not found: %s -> %s", (char*)cmn.community,edge_conf->owner,(char*)&reg.auth);
       }
     }
-    if(!comm && (!sss->lock_communities||redis_allow)) {
+    traceEvent(TRACE_DEBUG, "redis_allow=%d, lock_communities=%d",  redis_allow, sss->lock_communities);
+    if(comm == NULL && (sss->lock_communities!=1||redis_allow==1)) {
       comm = calloc(1, sizeof(struct sn_community));
 
       if(comm) {
@@ -668,7 +669,8 @@ static int process_udp(n2n_sn_t * sss,
 
       update_edge(sss, reg.edgeMac, comm, &(ack.sock), now);
       // change edge status
-      update_edge_conf(sss,edge_conf,1, (char*)reg.edgeMac);
+      memcpy(edge_conf->secret, reg.auth.token, sizeof(n2n_auth_token_t));
+      update_edge_conf(sss,edge_conf,1, macaddr_str(mac_buf, reg.edgeMac));
       encode_REGISTER_SUPER_ACK(ackbuf, &encx, &cmn2, &ack);
 
       sendto(sss->sock, ackbuf, encx, 0,
@@ -761,8 +763,8 @@ static void help() {
 
   printf("-l <lport>\tSet UDP main listen port to <lport>\n");
   printf("-c <path>\tFile containing the allowed communities.\n");
-  printf("-r <redis-host>\tredis host.\n");
-  printf("-p <redis-password>\tRedis port.\n");
+  printf("-r <redis-host>\tredis host\n");
+  printf("-p <redis-port>\tRedis port, default 6379.\n");
   printf("-w <redis-password\tRedis password.\n");
   printf("-n <redis-dbnum>\tRedis db num.\n");
 #if defined(N2N_HAVE_DAEMON)
@@ -791,7 +793,7 @@ static int setOption(int optkey, char *_optarg, n2n_sn_t *sss) {
 
   case 'r': /* redis-host */
     strncpy( sss->redis.host, _optarg, N2N_REDIS_HOST_SIZE);
-    //sss->lock_communities = 1;
+    sss->lock_communities = 1;
     sss->use_redis = 1;
     break;
 

@@ -19,7 +19,7 @@ redisContext *get_redis_context(n2n_sn_t *sss){
     redisReply *reply;
     reply = redisCommand(c, "AUTH %s" , sss->redis.password);
     traceEvent(TRACE_DEBUG, "AUTH %s [%s]", sss->redis.password,reply->str);
-    if(!strcmp(reply->str,"OK")){
+    if(strcmp(reply->str,"OK")!=0){
         traceEvent(TRACE_ERROR, "login error: can't login with [%s], msg = %s", sss->redis.password,reply->str);
         freeReplyObject(reply);
         return NULL;
@@ -40,7 +40,9 @@ void hget_str(redisContext *c, char *namespace,char *map,char *key,char *reply_s
     redisReply *reply;
     reply = redisCommand(c,"HGET %s:%s %s",namespace,map,key);
     traceEvent(TRACE_DEBUG, "HGET %s:%s %s = %s", namespace,map,key,reply->str);
-    strncpy( reply_str, reply->str,size);
+    if(reply->str!=NULL){
+        strncpy( reply_str, reply->str,size);
+    }
     freeReplyObject(reply);
 }
 int hget_int(redisContext *c, char *namespace,char *map,char *key){
@@ -70,6 +72,7 @@ void get_comm_conf(char *community_name,redisContext *c, redis_comm_conf *comm_c
     hget_str(c,"comm",community_name,"subnet",comm_conf->subnet,N2N_COMMUNITY_SIZE);
 }
 void get_edge_conf(n2n_REGISTER_SUPER_t *reg,redisContext *c, redis_edge_conf *edge_conf){
+    traceEvent(TRACE_DEBUG, "reg->auth.token=%s", (char*)reg->auth.token);
     hget_str(c,"edge", (char*)reg->auth.token,"secret",edge_conf->secret,N2N_COMMUNITY_SIZE);
     hget_str(c,"edge", (char*)reg->auth.token,"owner",edge_conf->owner,N2N_COMMUNITY_SIZE);
     hget_str(c,"edge", (char*)reg->auth.token,"community",edge_conf->community,N2N_COMMUNITY_SIZE);

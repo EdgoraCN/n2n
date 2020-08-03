@@ -697,7 +697,9 @@ static void send_register_super(n2n_edge_t * eee,
     eee->last_cookie[idx] = rand() % 0xff;
 
   memcpy(reg.cookie, eee->last_cookie, N2N_COOKIE_SIZE);
+  memcpy(reg.auth.token, eee->conf.auth_token, N2N_AUTH_TOKEN_SIZE);
   reg.auth.scheme=0; /* No auth yet */
+  reg.auth.toksize=sizeof(reg.auth.token)/sizeof(uint8_t);
 
   idx=0;
   encode_mac(reg.edgeMac, &idx, eee->device.mac_addr);

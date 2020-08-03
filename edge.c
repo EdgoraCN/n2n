@@ -215,6 +215,14 @@ static int setOption(int optkey, char *optargument, n2n_priv_config_t *ec, n2n_e
       conf->community_name[N2N_COMMUNITY_SIZE-1] = '\0';
       break;
     }
+  
+  case 'C': /* auth code as a string */
+    {
+      memset(conf->auth_token, 0, N2N_AUTH_TOKEN_SIZE);
+      strncpy((char *)conf->auth_token, optargument, N2N_AUTH_TOKEN_SIZE);
+      conf->auth_token[N2N_AUTH_TOKEN_SIZE-1] = '\0';
+      break;
+    }
 
   case 'E': /* multicast ethernet addresses accepted. */
     {

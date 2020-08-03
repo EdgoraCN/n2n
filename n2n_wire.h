@@ -79,7 +79,7 @@ typedef enum n2n_pc
 
 
 #define N2N_AUTH_TOKEN_SIZE             32      /* bytes */
-
+typedef uint8_t n2n_auth_token_t[N2N_AUTH_TOKEN_SIZE];
 
 #define N2N_EUNKNOWN                    -1
 #define N2N_ENOTIMPL                    -2
