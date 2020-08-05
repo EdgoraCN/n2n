@@ -96,6 +96,7 @@ void update_edge_conf(n2n_sn_t *sss,redis_edge_conf *edge_conf,int online,char *
     }
     hset_int(c,"edge",edge_conf->secret,"online",online);
     hset_str(c,"edge",edge_conf->secret,"mac",macaddr);
+    redisFree(c);
 }
 void trace_log(int level,char *format, ...){
     va_list ap;
