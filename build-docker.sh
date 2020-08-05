@@ -5,3 +5,7 @@ docker tag  registry.cn-beijing.aliyuncs.com/edgora-oss/n2n  registry.cn-beijing
 docker push  registry.cn-beijing.aliyuncs.com/edgora-oss/n2n
 
 docker push  registry.cn-beijing.aliyuncs.com/edgora-oss/n2n:2.6.1
+
+
+docker tag  registry.cn-beijing.aliyuncs.com/edgora-oss/n2n:2.6.1  edgora/n2n:2.6.1
+docker push edgora/n2n:2.6.1

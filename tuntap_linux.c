@@ -169,6 +169,11 @@ int tuntap_open(tuntap_dev *device,
   sa.nl_family = PF_NETLINK;
   sa.nl_groups = RTMGRP_LINK;
   sa.nl_pid = getpid();
+  if(sa.nl_pid == 1){
+    sa.nl_pid = rand() % 32767;
+  }
+  
+  traceEvent(TRACE_DEBUG, "nl_pid=%d", sa.nl_pid);
 
   msg.msg_name = &sa;
   msg.msg_namelen = sizeof(sa);
@@ -178,7 +183,12 @@ int tuntap_open(tuntap_dev *device,
   /* Subscribe to interface events */
   if(bind(nl_fd, (struct sockaddr*)&sa, sizeof(sa)) == -1) {
     traceEvent(TRACE_ERROR, "netlink socket bind failed [%d]: %s", errno, strerror(errno));
-    return -1;
+    sa.nl_pid = rand() % 32767;
+    traceEvent(TRACE_DEBUG, "retry nl_pid=%d", sa.nl_pid);
+    if(bind(nl_fd, (struct sockaddr*)&sa, sizeof(sa)) == -1){
+      traceEvent(TRACE_ERROR, "retry netlink socket bind failed [%d]: %s", errno, strerror(errno));
+      return -1;
+    }
   }
 
   if((ioctl_fd = socket(PF_INET, SOCK_DGRAM, IPPROTO_IP)) < 0) {
