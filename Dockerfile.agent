@@ -6,7 +6,7 @@ RUN  	git clone  https://github.com/aimacity/n2n.git && cd n2n && \
      ./configure && \
      make && mv edge supernode /usr/local/bin
 RUN curl -o jj-1.2.3-linux-amd64.tar.gz "http://file.edgora.cn/jj-1.2.3-linux-amd64.tar.gz" \ 
-     && tar -xvf ~/.edge-agent/jj-1.2.3-linux-amd64.tar.gz \
+     && tar -xvf ./jj-1.2.3-linux-amd64.tar.gz \
      && mv ./jj-1.2.3-linux-amd64/jj /usr/local/bin/jj 
 
 FROM alpine
@@ -16,7 +16,7 @@ COPY --from=builder /usr/local/bin/edge /usr/local/bin/jj  /usr/local/bin/
 
 ADD scripts/entrypoint.sh /entrypoint.sh
 
-RUN chomd 777 /entrypoint.sh
+RUN chmod -R 777 /entrypoint.sh
 
 ENTRYPOINT [ "/entrypoint.sh" ]
 
