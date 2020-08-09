@@ -619,18 +619,22 @@ static int process_udp(n2n_sn_t * sss,
       existance (better from the security standpoint)
       use redis check if the community is allowd 
     */
-    int redis_allow = 0; 
+    int redis_allow = 0;
     redis_comm_conf *comm_conf = calloc(1, sizeof(struct redis_community_conf));
     redis_edge_conf *edge_conf = calloc(1, sizeof(struct redis_edge_conf));
-    if(!comm && sss->use_redis){
+    // if use redis ,check redis_allow for agent
+    if(sss->use_redis){
       // check redis community is exist
       get_redis_data((char*)cmn.community,sss,&reg,comm_conf,edge_conf);
       traceEvent(TRACE_INFO, "redis community: %s -> %s [subnet=%s]", comm_conf->owner , comm_conf->community,comm_conf->subnet);
       traceEvent(TRACE_INFO, "redis edge: %s -> %s -> %s [ip=%s] [online=%d] ", edge_conf->community,edge_conf->owner,edge_conf->secret,edge_conf->ip,edge_conf->online);
       if(comm_conf->owner!=NULL&&comm_conf->owner[0] != '\0'&&edge_conf->owner!=NULL&&edge_conf->owner[0] != '\0'){
         redis_allow = 1;
+      }else if(comm_conf->owner==NULL||comm_conf->owner[0] == '\0') {
+        traceEvent(TRACE_INFO, "skip non-redis edge check: %s ", (char*)cmn.community);
       } else {
         traceEvent(TRACE_INFO, "redis edge not found: %s -> %s", (char*)cmn.community,edge_conf->owner,(char*)&reg.auth);
+        return;
       }
     }
     traceEvent(TRACE_DEBUG, "redis_allow=%d, lock_communities=%d",  redis_allow, sss->lock_communities);
@@ -670,7 +674,9 @@ static int process_udp(n2n_sn_t * sss,
       update_edge(sss, reg.edgeMac, comm, &(ack.sock), now);
       // change edge status
       memcpy(edge_conf->secret, reg.auth.token, sizeof(n2n_auth_token_t));
-      update_edge_conf(sss,edge_conf,1, macaddr_str(mac_buf, reg.edgeMac));
+      if(redis_allow == 1){
+        update_edge_conf(sss,edge_conf,1, macaddr_str(mac_buf, reg.edgeMac));
+      }
       encode_REGISTER_SUPER_ACK(ackbuf, &encx, &cmn2, &ack);
 
       sendto(sss->sock, ackbuf, encx, 0,
