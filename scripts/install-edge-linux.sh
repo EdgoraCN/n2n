@@ -35,6 +35,8 @@ set -- "${POSITIONAL[@]}" # restore positional parameters
 
 echo edge_username=$edge_username
 echo edge_id=$edge_id
+export edge_host="https://console.edgora.com"
+#export edge_host="http://10.9.9.120:9000"
 
 # shutdown old version
 if [ -x "$(command -v systemctl)" ]; then
@@ -68,7 +70,7 @@ chmod +x ~/.edge-agent/jj
 export PATH=$HOME/.edge-agent:$PATH
 
 echo "try to active edge"
-curl -v -o ~/.edge-agent/edge-agent.json http://10.9.9.120:9000/api/client-tokens/active/$edge_username/$edge_id/$edge_code
+curl -v -o ~/.edge-agent/edge-agent.json $edge_host/api/client-tokens/active/$edge_username/$edge_id/$edge_code
 
 token=`cat ~/.edge-agent/edge-agent.json | ~/.edge-agent/jj token`
 if [ -z "$token" ]; then
@@ -77,7 +79,7 @@ if [ -z "$token" ]; then
     exit 1;
 fi
 
-curl -v -o ~/.edge-agent/edge-agent.conf http://10.9.9.120:9000/api/edge/conf/$token
+curl -v -o ~/.edge-agent/edge-agent.conf $edge_host/api/edge/conf/$token
 
 
 # startup service

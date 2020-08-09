@@ -33,3 +33,7 @@ tools/n2n-decode.dSYM/Contents/Info.plist
 tools/n2n-decode.dSYM/Contents/Resources/DWARF/n2n-decode
 *dSYM*
 redis_test
+libcrypt.so
+edge-agent-linux
+android/Hin2n/.settings/org.eclipse.buildship.core.prefs
+.vscode/settings.json

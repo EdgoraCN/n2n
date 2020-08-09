@@ -1,0 +1,23 @@
+FROM alpine as builder
+ENV C_INCLUDE_PATH=/usr/include/hiredis
+RUN  apk add --update --no-cache curl   g++ automake make  autoconf git bash pkgconfig linux-headers  libressl libressl-dev  libpcap libpcap-dev  hiredis hiredis-dev
+RUN  	git clone  https://github.com/aimacity/n2n.git && cd n2n && \
+     ./autogen.sh && \
+     ./configure && \
+     make && mv edge supernode /usr/local/bin
+RUN curl -o jj-1.2.3-linux-amd64.tar.gz "http://file.edgora.cn/jj-1.2.3-linux-amd64.tar.gz" \ 
+     && tar -xvf ~/.edge-agent/jj-1.2.3-linux-amd64.tar.gz \
+     && mv ./jj-1.2.3-linux-amd64/jj /usr/local/bin/jj 
+
+FROM alpine
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apk add --update --no-cache curl libressl libpcap && rm -rf /var/lib/apt/lists/* &&  rm -fr /var/cache/apk/*
+COPY --from=builder /usr/local/bin/edge /usr/local/bin/jj  /usr/local/bin/
+
+ADD scripts/entrypoint.sh /entrypoint.sh
+
+RUN chomd 777 /entrypoint.sh
+
+ENTRYPOINT [ "/entrypoint.sh" ]
+
+
