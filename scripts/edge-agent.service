@@ -1,0 +1,16 @@
+[Unit]
+Description=Edge Agent
+
+[Service]
+ExecStart=%h/.edge-agent/edge-agent-linux %h/.edge-agent/edge-agent.conf
+Restart=always
+#User=%u
+# Note Debian/Ubuntu uses 'nogroup', RHEL/Fedora uses 'nobody'
+#Group=%g
+Environment=PATH=%h/.edge-agent:/bin:/usr/bin:/usr/local/bin
+Environment=NODE_ENV=production
+WorkingDirectory=%h/.edge-agent
+
+[Install]
+WantedBy=multi-user.target
+#WantedBy=default.target
