@@ -109,6 +109,20 @@ int main(int argc, char **argv) {
     printf("HGET maperr->aaa: %s\n", reply->str);
     freeReplyObject(reply);
 
+    reply = redisCommand(c,"SET online %d EX %d", 1,60);
+    printf("SET online %d EX %d: %s\n", 1,60, reply->str);
+    freeReplyObject(reply);
+
+    reply = redisCommand(c,"GET %s","online");
+    printf("GET online: %s\n", reply->str);
+    freeReplyObject(reply);
+
+    reply = redisCommand(c,"TTL online");
+    printf("TTL online: %d\n", reply->integer);
+    freeReplyObject(reply);
+
+
+
     reply = redisCommand(c,"HGETALL  n2n:network:%s","public-b57ab26b");
     if ( reply->type == REDIS_REPLY_ERROR ) {
         printf( "Error: %s\n", reply->str );

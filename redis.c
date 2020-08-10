@@ -65,6 +65,12 @@ void hset_int(redisContext *c, char *namespace,char *map,char *key,int value){
     traceEvent(TRACE_DEBUG, "HSET %s:%s %s = %d [%s]", namespace,map,key,value,reply->str);
     freeReplyObject(reply);
 }
+void set_int_ttl(redisContext *c, char *key,int value,int ex){
+    redisReply *reply;
+    reply = redisCommand(c,"SET %s %d EX %d",key,value,ex);
+    traceEvent(TRACE_DEBUG, "SET %s %d EX %d = [%s]", key,value,ex,reply->str);
+    freeReplyObject(reply);
+}
 void get_comm_conf(char *community_name,redisContext *c, redis_comm_conf *comm_conf){
     hget_str(c,"comm",community_name,"secret",comm_conf->secret,N2N_COMMUNITY_SIZE);
     hget_str(c,"comm",community_name,"owner",comm_conf->owner,N2N_COMMUNITY_SIZE);
@@ -95,7 +101,8 @@ void update_edge_conf(n2n_sn_t *sss,redis_edge_conf *edge_conf,int online,char *
         return;
     }
     hset_int(c,"edge",edge_conf->secret,"online",online);
-    hset_str(c,"edge",edge_conf->secret,"mac",macaddr);
+    //hset_str(c,"edge",edge_conf->secret,"mac",macaddr);
+    set_int_ttl(c,edge_conf->secret,1,60)
     redisFree(c);
 }
 void trace_log(int level,char *format, ...){
