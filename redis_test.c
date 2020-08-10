@@ -118,7 +118,7 @@ int main(int argc, char **argv) {
     freeReplyObject(reply);
 
     reply = redisCommand(c,"TTL online");
-    printf("TTL online: %d\n", reply->integer);
+    printf("TTL online: %lld\n", reply->integer);
     freeReplyObject(reply);
 
 

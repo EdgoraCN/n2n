@@ -102,7 +102,7 @@ void update_edge_conf(n2n_sn_t *sss,redis_edge_conf *edge_conf,int online,char *
     }
     hset_int(c,"edge",edge_conf->secret,"online",online);
     //hset_str(c,"edge",edge_conf->secret,"mac",macaddr);
-    set_int_ttl(c,edge_conf->secret,1,60)
+    set_int_ttl(c,edge_conf->secret,1,60);
     redisFree(c);
 }
 void trace_log(int level,char *format, ...){
